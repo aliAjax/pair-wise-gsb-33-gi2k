@@ -22,6 +22,10 @@ func ErrorHandler(logger *slog.Logger) gin.HandlerFunc {
 		err := c.Errors.Last().Err
 		var appErr *util.AppError
 		if errors.As(err, &appErr) {
+			if appErr.Details != nil {
+				c.JSON(appErr.HTTPStatus, dto.FailWithDetails(appErr.Code, appErr.Message, appErr.Details))
+				return
+			}
 			c.JSON(appErr.HTTPStatus, dto.Fail(appErr.Code, appErr.Message))
 			return
 		}

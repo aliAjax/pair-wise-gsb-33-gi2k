@@ -1,6 +1,9 @@
 <template>
   <div class="page">
-    <h1>养护知识文章</h1>
+    <div class="list-head">
+      <h1>养护知识文章</h1>
+      <el-button v-if="auth.token" type="primary" @click="$router.push({ name: 'articleEditorNew' })">写文章</el-button>
+    </div>
     <div class="topic-tabs">
       <el-radio-group v-model="topicTag" @change="onTopicChange">
         <el-radio-button value="">全部</el-radio-button>
@@ -23,9 +26,11 @@ import { computed, onMounted, ref } from 'vue'
 import CareArticleCard from '@/components/common/CareArticleCard.vue'
 import SearchFilter from '@/components/common/SearchFilter.vue'
 import { useArticleStore } from '@/stores/articleStore'
+import { useAuthStore } from '@/stores/authStore'
 import { CareTopicTagMap } from '@/constants/article'
 
 const store = useArticleStore()
+const auth = useAuthStore()
 const topicTag = ref('')
 const keyword = ref('')
 const page = ref(1)
@@ -61,6 +66,7 @@ function onPage(p: number) {
 
 <style scoped>
 .page { max-width: 1200px; margin: 0 auto; }
+.list-head { display: flex; justify-content: space-between; align-items: center; }
 .topic-tabs { margin: 12px 0; }
 .pager { margin-top: 20px; justify-content: center; }
 </style>

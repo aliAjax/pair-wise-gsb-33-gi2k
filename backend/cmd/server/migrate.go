@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log/slog"
 
 	"golang.org/x/crypto/bcrypt"
@@ -11,17 +12,64 @@ import (
 )
 
 func migrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&model.User{},
 		&model.PlantSpecies{},
 		&model.CareArticle{},
+		&model.ArticleDraft{},
+		&model.ArticleRevision{},
 		&model.DiseasePest{},
 		&model.CareReminder{},
 		&model.Favorite{},
 		&model.UserGarden{},
 		&model.Question{},
 		&model.Answer{},
-	)
+	); err != nil {
+		return err
+	}
+	return backfillArticleRevisions(db)
+}
+
+// backfillArticleRevisions gives pre-revision articles a revision-1
+// snapshot and counter so the optimistic publish logic applies uniformly.
+func backfillArticleRevisions(db *gorm.DB) error {
+	var articles []model.CareArticle
+	if err := db.Where("revision_no = 0").Find(&articles).Error; err != nil {
+		return err
+	}
+	if len(articles) == 0 {
+		return nil
+	}
+	logger := slog.Default()
+	backfilled := 0
+	for _, a := range articles {
+		err := db.Transaction(func(tx *gorm.DB) error {
+			var n int64
+			if err := tx.Model(&model.ArticleRevision{}).Where("article_id = ?", a.ID).Count(&n).Error; err != nil {
+				return err
+			}
+			if n == 0 {
+				rev := model.ArticleRevision{
+					ArticleID: a.ID, RevisionNo: 1, UserID: a.UserID,
+					Title: a.Title, Content: a.Content, Cover: a.Cover,
+					TopicTag: a.TopicTag, Summary: "初始版本",
+				}
+				if err := tx.Create(&rev).Error; err != nil {
+					return err
+				}
+			}
+			return tx.Model(&model.CareArticle{}).Where("id = ? AND revision_no = 0", a.ID).
+				UpdateColumn("revision_no", 1).Error
+		})
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		backfilled++
+	}
+	if backfilled > 0 {
+		logger.Info("backfilled article revision 1 snapshots", "articles", backfilled)
+	}
+	return nil
 }
 
 func seed(db *gorm.DB) error {
@@ -58,13 +106,26 @@ func seed(db *gorm.DB) error {
 	}
 
 	articles := []model.CareArticle{
-		{UserID: admin.ID, Title: "春季换盆全攻略：时机、方法与注意事项", Content: "春季气温回升后是换盆的最佳时机。换盆前停止浇水3天，小心脱盆，修剪烂根并消毒，选择比原盆大1-2号的透气花盆，底部垫陶粒排水层……", Cover: "https://images.unsplash.com/photo-1459156212016-c812468e2115?w=800", TopicTag: constants.TopicTagRepotting, Status: constants.ArticleStatusPublished, ViewCount: 128},
-		{UserID: admin.ID, Title: "多肉植物施肥要点：薄肥勤施", Content: "多肉施肥宜稀薄，生长季每月一次稀释液肥即可，休眠期停止施肥，避免肥害烧根……", Cover: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=800", TopicTag: constants.TopicTagFertilizing, Status: constants.ArticleStatusPublished, ViewCount: 96},
-		{UserID: user.ID, Title: "月季夏季修剪与控旺", Content: "月季夏季修剪以轻剪为主，剪除残花和细弱枝，保留健壮枝条促进复花……", Cover: "https://images.unsplash.com/photo-1496062031456-07b8f162a322?w=800", TopicTag: constants.TopicTagPruning, Status: constants.ArticleStatusPublished, ViewCount: 210},
-		{UserID: admin.ID, Title: "常见介壳虫的识别与防治", Content: "介壳虫常附着在叶背和枝干，可用酒精棉擦拭，严重时喷洒矿物油乳剂……", Cover: "https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?w=800", TopicTag: constants.TopicTagPestControl, Status: constants.ArticleStatusPublished, ViewCount: 154},
-		{UserID: user.ID, Title: "龟背竹扦插繁殖实操", Content: "选取带气生根的健壮枝条，切口晾干后插入湿润的蛭石中，保持湿度约三周生根……", Cover: "https://images.unsplash.com/photo-1524594152303-9fd13543fe6e?w=800", TopicTag: constants.TopicTagPropagation, Status: constants.ArticleStatusPublished, ViewCount: 67},
+		{UserID: admin.ID, Title: "春季换盆全攻略：时机、方法与注意事项", Content: "春季气温回升后是换盆的最佳时机。换盆前停止浇水3天，小心脱盆，修剪烂根并消毒，选择比原盆大1-2号的透气花盆，底部垫陶粒排水层……", Cover: "https://images.unsplash.com/photo-1459156212016-c812468e2115?w=800", TopicTag: constants.TopicTagRepotting, Status: constants.ArticleStatusPublished, RevisionNo: 1, ViewCount: 128},
+		{UserID: admin.ID, Title: "多肉植物施肥要点：薄肥勤施", Content: "多肉施肥宜稀薄，生长季每月一次稀释液肥即可，休眠期停止施肥，避免肥害烧根……", Cover: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=800", TopicTag: constants.TopicTagFertilizing, Status: constants.ArticleStatusPublished, RevisionNo: 1, ViewCount: 96},
+		{UserID: user.ID, Title: "月季夏季修剪与控旺", Content: "月季夏季修剪以轻剪为主，剪除残花和细弱枝，保留健壮枝条促进复花……", Cover: "https://images.unsplash.com/photo-1496062031456-07b8f162a322?w=800", TopicTag: constants.TopicTagPruning, Status: constants.ArticleStatusPublished, RevisionNo: 1, ViewCount: 210},
+		{UserID: admin.ID, Title: "常见介壳虫的识别与防治", Content: "介壳虫常附着在叶背和枝干，可用酒精棉擦拭，严重时喷洒矿物油乳剂……", Cover: "https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?w=800", TopicTag: constants.TopicTagPestControl, Status: constants.ArticleStatusPublished, RevisionNo: 1, ViewCount: 154},
+		{UserID: user.ID, Title: "龟背竹扦插繁殖实操", Content: "选取带气生根的健壮枝条，切口晾干后插入湿润的蛭石中，保持湿度约三周生根……", Cover: "https://images.unsplash.com/photo-1524594152303-9fd13543fe6e?w=800", TopicTag: constants.TopicTagPropagation, Status: constants.ArticleStatusPublished, RevisionNo: 1, ViewCount: 67},
 	}
 	if err := db.Create(&articles).Error; err != nil {
+		return err
+	}
+
+	// Initial revision-1 snapshots for seed articles.
+	revisions := make([]model.ArticleRevision, 0, len(articles))
+	for _, a := range articles {
+		revisions = append(revisions, model.ArticleRevision{
+			ArticleID: a.ID, RevisionNo: 1, UserID: a.UserID,
+			Title: a.Title, Content: a.Content, Cover: a.Cover,
+			TopicTag: a.TopicTag, Summary: "初始版本",
+		})
+	}
+	if err := db.Create(&revisions).Error; err != nil {
 		return err
 	}
 
@@ -103,7 +164,7 @@ func seed(db *gorm.DB) error {
 	}
 
 	logger.Info("gbplantwiki seed data created",
-		"users", 2, "plants", len(plants), "articles", len(articles),
+		"users", 2, "plants", len(plants), "articles", len(articles), "article_revisions", len(revisions),
 		"pests", len(pests), "reminders", len(reminders), "questions", len(questions), "answers", len(answers))
 	return nil
 }

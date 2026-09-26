@@ -67,7 +67,7 @@ gb-61/
 │   ├── cmd/server/              # main.go + migrate/seed
 │   └── internal/
 │       ├── config/              # 环境变量解析
-│       ├── model/               # 9 个实体，按实体分文件
+│       ├── model/               # 11 个实体，按实体分文件
 │       ├── repository/          # 按实体分文件，哨兵错误
 │       ├── service/             # 按实体分文件，构造器注入
 │       ├── handler/             # 按实体分文件 + upload/home
@@ -130,11 +130,23 @@ gb-61/
 | POST | /api/v1/plants | 管理员（限流） | 新增品种 |
 | PUT | /api/v1/plants/:id | 管理员 | 更新品种 |
 | DELETE | /api/v1/plants/:id | 管理员 | 删除品种 |
-| GET | /api/v1/articles | 公开 | 养护文章分页列表/筛选 |
-| GET | /api/v1/articles/:id | 公开 | 文章详情并自增阅读数 |
-| POST | /api/v1/articles | 登录（限流） | 发布文章 |
-| PUT | /api/v1/articles/:id | 登录 | 编辑自己的文章 |
-| DELETE | /api/v1/articles/:id | 登录 | 删除自己的文章 |
+| GET | /api/v1/articles | 公开 | 养护文章分页列表/筛选（仅已发布，含 revision_no） |
+| GET | /api/v1/articles/:id | 公开 | 文章详情（已撤回不可见，404）并自增阅读数 |
+| POST | /api/v1/articles | 登录（限流） | 直接发布文章（兼容接口，自动留 revision 1 快照） |
+| PUT | /api/v1/articles/:id | 登录 | 兼容直改接口（自动追加修订快照；推荐走草稿发布） |
+| DELETE | /api/v1/articles/:id | 登录 | 删除自己的文章（连同草稿与修订） |
+| GET | /api/v1/account/articles | 登录 | 我的文章管理列表（含未发布草稿标记/冲突状态） |
+| GET | /api/v1/account/drafts | 登录 | 我的独立草稿列表 |
+| GET | /api/v1/account/drafts/open?article_id= | 登录 | 打开编辑器：有草稿返草稿，无草稿用线上版本播种（不落库） |
+| GET | /api/v1/account/drafts/:id | 登录 | 获取指定草稿（含线上修订号/conflict） |
+| PUT | /api/v1/account/drafts | 登录（限流） | 保存独立草稿（携带页面修订号 base_revision_no） |
+| DELETE | /api/v1/account/drafts/:id | 登录 | 放弃草稿（不影响线上与历史） |
+| POST | /api/v1/account/articles/publish | 登录（限流） | 发布草稿；基准修订过期返回 409/40901 并保留草稿 |
+| POST | /api/v1/account/drafts/:id/reconcile | 登录 | 合并线上新版本后把草稿重新基于当前修订 |
+| POST | /api/v1/account/articles/:id/withdraw | 登录 | 撤回：访客不可见，内容/修订/草稿保留 |
+| GET | /api/v1/account/articles/:id/revisions | 登录 | 文章历史修订列表（倒序） |
+| GET | /api/v1/account/articles/:id/revisions/:no | 登录 | 打开某一历史修订（只读） |
+| POST | /api/v1/account/articles/:id/revisions/:no/restore | 登录（限流） | 历史修订恢复成新草稿（有未发布草稿时 409 拒绝） |
 | GET | /api/v1/pests | 公开 | 病虫害手册搜索 |
 | GET | /api/v1/pests/:id | 公开 | 病虫害详情 |
 | POST | /api/v1/pests | 管理员（限流） | 新增病虫害条目 |
@@ -177,6 +189,16 @@ gb-61/
 
 - 后端：`backend/internal/constants/favorite.go`（定义）、`backend/internal/model/favorite.go`（模型）、`backend/internal/service/favorite_service.go`（校验）、`backend/internal/constants/log_templates.go`、`database/init.sql`
 - 前端：`frontend/src/constants/favorite.ts`（定义）、`frontend/src/components/common/FavoriteButton.vue`（交互）、`frontend/src/pages/Garden.vue` 与 `frontend/src/pages/Profile.vue`（收藏夹列表）
+
+## 文章修订留档（草稿 / 修订号 / 撤回）
+
+编辑不再直接覆盖线上文章，三张表分工：
+
+- `care_articles`：线上当前快照，始终镜像最新一次发布，带 `revision_no` 与 `status(published/withdrawn)`；
+- `article_drafts`：独立草稿（`article_id` 为空表示尚未发布的新文章），冻结记录打开时的 `base_revision_no`；
+- `article_revisions`：每次发布追加的不可变快照，历史可查看、可恢复成新草稿。
+
+工作流：打开编辑页先 `GET /account/drafts/open` 进入独立草稿；`PUT /account/drafts` 保存时携带页面修订号；发布时后端在事务内对文章行加锁并比对修订号，若线上已被别人重新发布（修订号更大），返回 `409 / code=40901` 并在 `details` 中给出线上新修订信息，**草稿原样保留、新版本不被覆盖**；编辑对照合并后调 `reconcile` 重新基于线上修订，再发布。发布成功后列表、详情、首页都读到新快照，旧修订仍可打开或“恢复为新草稿”。撤回只把状态改为 `withdrawn`：访客列表/详情均 404，而内容、历史修订和未发布草稿全部保留，再发布即重新上线。
 
 ## 横切关注点
 

@@ -10,16 +10,18 @@ const (
 	CodeConflict        = 40900
 	CodeRateLimited     = 42900
 	CodeValidationError = 42200
+	CodeRevisionStale   = 40901
 	CodeInternalError   = 50000
 )
 
 // Error messages referenced across handlers and middleware.
 const (
-	MsgInvalidParam     = "invalid request parameter"
-	MsgUnauthorized     = "authentication required"
-	MsgForbidden        = "permission denied"
-	MsgNotFound         = "resource not found"
-	MsgConflict         = "resource conflict"
-	MsgRateLimited      = "too many requests"
-	MsgInternalError    = "internal server error"
+	MsgInvalidParam  = "invalid request parameter"
+	MsgUnauthorized  = "authentication required"
+	MsgForbidden     = "permission denied"
+	MsgNotFound      = "resource not found"
+	MsgConflict      = "resource conflict"
+	MsgRevisionStale = "online article has a newer revision, please re-merge before publishing"
+	MsgRateLimited   = "too many requests"
+	MsgInternalError = "internal server error"
 )

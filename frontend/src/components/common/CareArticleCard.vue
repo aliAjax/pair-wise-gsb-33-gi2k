@@ -6,7 +6,7 @@
     <div class="body">
       <el-tag size="small" type="success">{{ CareTopicTagMap[article.topic_tag] }}</el-tag>
       <div class="title">{{ article.title }}</div>
-      <div class="meta">{{ formatDate(article.created_at) }} · 阅读 {{ article.view_count }}</div>
+      <div class="meta">{{ formatDate(article.created_at) }} · v{{ article.revision_no }} · 阅读 {{ article.view_count }}</div>
     </div>
   </el-card>
 </template>

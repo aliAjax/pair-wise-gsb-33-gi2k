@@ -6,6 +6,7 @@
         <el-menu-item index="/">首页</el-menu-item>
         <el-menu-item index="/plants">品种库</el-menu-item>
         <el-menu-item index="/articles">养护文章</el-menu-item>
+        <el-menu-item v-if="auth.token" index="/articles/manage">我的文章</el-menu-item>
         <el-menu-item index="/pests">病虫害手册</el-menu-item>
         <el-menu-item index="/calendar">季节日历</el-menu-item>
         <el-menu-item index="/garden">我的花园</el-menu-item>

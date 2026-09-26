@@ -9,7 +9,8 @@ import (
 	"github.com/gbplantwiki/gbplantwiki/internal/model"
 )
 
-// CareArticleRepository handles persistence of care articles.
+// CareArticleRepository handles persistence of the online care article
+// rows (the latest published snapshot of every article).
 type CareArticleRepository struct {
 	db *gorm.DB
 }
@@ -24,7 +25,7 @@ func (r *CareArticleRepository) Create(a *model.CareArticle) error {
 	return r.db.Create(a).Error
 }
 
-// FindByID locates an article by id.
+// FindByID locates an article by id regardless of status.
 func (r *CareArticleRepository) FindByID(id uint) (*model.CareArticle, error) {
 	var a model.CareArticle
 	if err := r.db.First(&a, id).Error; err != nil {
@@ -36,9 +37,33 @@ func (r *CareArticleRepository) FindByID(id uint) (*model.CareArticle, error) {
 	return &a, nil
 }
 
+// FindPublishedByID locates an online (published) article by id.
+func (r *CareArticleRepository) FindPublishedByID(id uint) (*model.CareArticle, error) {
+	var a model.CareArticle
+	if err := r.db.Where("id = ? AND status = ?", id, constants.ArticleStatusPublished).First(&a).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &a, nil
+}
+
 // Update persists an article.
 func (r *CareArticleRepository) Update(a *model.CareArticle) error {
 	return r.db.Save(a).Error
+}
+
+// UpdateColumns persists only the given columns of the article.
+func (r *CareArticleRepository) UpdateColumns(id uint, values map[string]interface{}) error {
+	res := r.db.Model(&model.CareArticle{}).Where("id = ?", id).UpdateColumns(values)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete removes an article by id.
@@ -53,13 +78,14 @@ func (r *CareArticleRepository) Delete(id uint) error {
 	return nil
 }
 
-// IncrementView bumps the view count of an article.
+// IncrementView bumps the view count of a published article.
 func (r *CareArticleRepository) IncrementView(id uint) error {
-	return r.db.Model(&model.CareArticle{}).Where("id = ?", id).
+	return r.db.Model(&model.CareArticle{}).
+		Where("id = ? AND status = ?", id, constants.ArticleStatusPublished).
 		UpdateColumn("view_count", gorm.Expr("view_count + 1")).Error
 }
 
-// List filters articles by topic tag and keyword with pagination.
+// List filters published articles by topic tag and keyword with pagination.
 func (r *CareArticleRepository) List(topicTag, keyword string, page, pageSize int) ([]model.CareArticle, int64, error) {
 	var items []model.CareArticle
 	var total int64
@@ -78,6 +104,15 @@ func (r *CareArticleRepository) List(topicTag, keyword string, page, pageSize in
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+// ListByOwner returns all articles (any status) owned by a user, newest first.
+func (r *CareArticleRepository) ListByOwner(userID uint) ([]model.CareArticle, error) {
+	var items []model.CareArticle
+	if err := r.db.Where("user_id = ?", userID).Order("id DESC").Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 // ListLatest returns the latest published articles for the home page.

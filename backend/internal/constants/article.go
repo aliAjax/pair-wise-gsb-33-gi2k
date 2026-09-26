@@ -2,11 +2,11 @@ package constants
 
 // CareTopicTag enumerates care article topic tags.
 const (
-	TopicTagFertilizing = "fertilizing" // 施肥
-	TopicTagPruning     = "pruning"     // 修剪
-	TopicTagRepotting   = "repotting"   // 换盆
+	TopicTagFertilizing = "fertilizing"  // 施肥
+	TopicTagPruning     = "pruning"      // 修剪
+	TopicTagRepotting   = "repotting"    // 换盆
 	TopicTagPestControl = "pest_control" // 病虫害
-	TopicTagPropagation = "propagation" // 繁殖
+	TopicTagPropagation = "propagation"  // 繁殖
 )
 
 // ValidTopicTags returns all accepted topic tag values.
@@ -24,8 +24,20 @@ func IsValidTopicTag(t string) bool {
 	return false
 }
 
-// Article statuses.
+// Article lifecycle statuses.
+//
+//	published — online, visible to visitors;
+//	draft     — only exists for articles that have never been published,
+//	            their editable copy lives in article_drafts;
+//	withdrawn — taken offline by the owner; visitors get 404 while the
+//	            content, revisions and any unpublished draft are retained.
 const (
-	ArticleStatusDraft   = "draft"
+	ArticleStatusDraft     = "draft"
 	ArticleStatusPublished = "published"
+	ArticleStatusWithdrawn = "withdrawn"
 )
+
+// IsValidArticleStatus reports whether s is a persisted article status.
+func IsValidArticleStatus(s string) bool {
+	return s == ArticleStatusDraft || s == ArticleStatusPublished || s == ArticleStatusWithdrawn
+}
