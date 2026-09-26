@@ -130,11 +130,18 @@ gb-61/
 | POST | /api/v1/plants | 管理员（限流） | 新增品种 |
 | PUT | /api/v1/plants/:id | 管理员 | 更新品种 |
 | DELETE | /api/v1/plants/:id | 管理员 | 删除品种 |
-| GET | /api/v1/articles | 公开 | 养护文章分页列表/筛选 |
-| GET | /api/v1/articles/:id | 公开 | 文章详情并自增阅读数 |
-| POST | /api/v1/articles | 登录（限流） | 发布文章 |
-| PUT | /api/v1/articles/:id | 登录 | 编辑自己的文章 |
-| DELETE | /api/v1/articles/:id | 登录 | 删除自己的文章 |
+| GET | /api/v1/articles | 公开 | 线上文章分页列表/筛选（仅已发布快照） |
+| GET | /api/v1/articles?scope=mine | 登录 | 我的文章（含草稿/已撤回） |
+| GET | /api/v1/articles/:id | 公开 | 线上文章详情并自增阅读数（草稿/已撤回 404） |
+| POST | /api/v1/articles | 登录（限流） | 新建文章（先落独立草稿） |
+| GET | /api/v1/articles/:id/edit | 登录 | 打开编辑器：线上快照+独立草稿+修订冲突标记 |
+| PUT | /api/v1/articles/:id/draft | 登录 | 保存草稿（带 base_revision，不动线上） |
+| POST | /api/v1/articles/:id/publish | 登录 | 发布草稿（修订号乐观锁；被他人抢先发布返回 409/40901，草稿保留） |
+| POST | /api/v1/articles/:id/offline | 登录 | 撤回线上版本（访客不可见，内容与留档保留） |
+| GET | /api/v1/articles/:id/revisions | 登录 | 历史修订列表 |
+| GET | /api/v1/articles/:id/revisions/:rid | 登录 | 打开某次历史修订快照 |
+| POST | /api/v1/articles/:id/revisions/:rid/restore | 登录 | 恢复历史修订为新草稿（不动线上） |
+| DELETE | /api/v1/articles/:id | 登录 | 删除自己的文章（含修订留档） |
 | GET | /api/v1/pests | 公开 | 病虫害手册搜索 |
 | GET | /api/v1/pests/:id | 公开 | 病虫害详情 |
 | POST | /api/v1/pests | 管理员（限流） | 新增病虫害条目 |

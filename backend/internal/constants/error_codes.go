@@ -11,15 +11,18 @@ const (
 	CodeRateLimited     = 42900
 	CodeValidationError = 42200
 	CodeInternalError   = 50000
+	// CodeRevisionConflict means the client saved a draft against a stale
+	// published revision; the local draft must be kept and re-merged.
+	CodeRevisionConflict = 40901
 )
 
 // Error messages referenced across handlers and middleware.
 const (
-	MsgInvalidParam     = "invalid request parameter"
-	MsgUnauthorized     = "authentication required"
-	MsgForbidden        = "permission denied"
-	MsgNotFound         = "resource not found"
-	MsgConflict         = "resource conflict"
-	MsgRateLimited      = "too many requests"
-	MsgInternalError    = "internal server error"
+	MsgInvalidParam  = "invalid request parameter"
+	MsgUnauthorized  = "authentication required"
+	MsgForbidden     = "permission denied"
+	MsgNotFound      = "resource not found"
+	MsgConflict      = "resource conflict"
+	MsgRateLimited   = "too many requests"
+	MsgInternalError = "internal server error"
 )

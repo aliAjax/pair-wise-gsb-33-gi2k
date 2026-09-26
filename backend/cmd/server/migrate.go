@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -11,17 +12,41 @@ import (
 )
 
 func migrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&model.User{},
 		&model.PlantSpecies{},
 		&model.CareArticle{},
+		&model.ArticleRevision{},
 		&model.DiseasePest{},
 		&model.CareReminder{},
 		&model.Favorite{},
 		&model.UserGarden{},
 		&model.Question{},
 		&model.Answer{},
-	)
+	); err != nil {
+		return err
+	}
+	return backfillArticleRevisions(db)
+}
+
+// backfillArticleRevisions 让升级前已发布的老文章进入修订体系：
+// 修订号补为 1，并为缺少留档的文章补一条 v1 发布快照（幂等，可重复执行）。
+func backfillArticleRevisions(db *gorm.DB) error {
+	if err := db.Model(&model.CareArticle{}).
+		Where("status = ? AND published_revision = 0", constants.ArticleStatusPublished).
+		Update("published_revision", 1).Error; err != nil {
+		return err
+	}
+	return db.Exec(`
+INSERT INTO article_revisions
+  (article_id, revision, action, title, content, cover, topic_tag, operator_id, operator_name, created_at)
+SELECT a.id, a.published_revision, ?, a.title, a.content, a.cover, a.topic_tag,
+       a.user_id, COALESCE(NULLIF(u.nickname, ''), u.username, ''), a.updated_at
+FROM care_articles a
+JOIN users u ON u.id = a.user_id
+WHERE a.status = ?
+  AND NOT EXISTS (SELECT 1 FROM article_revisions r WHERE r.article_id = a.id)`,
+		constants.RevisionActionPublish, constants.ArticleStatusPublished).Error
 }
 
 func seed(db *gorm.DB) error {
@@ -57,12 +82,13 @@ func seed(db *gorm.DB) error {
 		return err
 	}
 
+	now := time.Now()
 	articles := []model.CareArticle{
-		{UserID: admin.ID, Title: "春季换盆全攻略：时机、方法与注意事项", Content: "春季气温回升后是换盆的最佳时机。换盆前停止浇水3天，小心脱盆，修剪烂根并消毒，选择比原盆大1-2号的透气花盆，底部垫陶粒排水层……", Cover: "https://images.unsplash.com/photo-1459156212016-c812468e2115?w=800", TopicTag: constants.TopicTagRepotting, Status: constants.ArticleStatusPublished, ViewCount: 128},
-		{UserID: admin.ID, Title: "多肉植物施肥要点：薄肥勤施", Content: "多肉施肥宜稀薄，生长季每月一次稀释液肥即可，休眠期停止施肥，避免肥害烧根……", Cover: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=800", TopicTag: constants.TopicTagFertilizing, Status: constants.ArticleStatusPublished, ViewCount: 96},
-		{UserID: user.ID, Title: "月季夏季修剪与控旺", Content: "月季夏季修剪以轻剪为主，剪除残花和细弱枝，保留健壮枝条促进复花……", Cover: "https://images.unsplash.com/photo-1496062031456-07b8f162a322?w=800", TopicTag: constants.TopicTagPruning, Status: constants.ArticleStatusPublished, ViewCount: 210},
-		{UserID: admin.ID, Title: "常见介壳虫的识别与防治", Content: "介壳虫常附着在叶背和枝干，可用酒精棉擦拭，严重时喷洒矿物油乳剂……", Cover: "https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?w=800", TopicTag: constants.TopicTagPestControl, Status: constants.ArticleStatusPublished, ViewCount: 154},
-		{UserID: user.ID, Title: "龟背竹扦插繁殖实操", Content: "选取带气生根的健壮枝条，切口晾干后插入湿润的蛭石中，保持湿度约三周生根……", Cover: "https://images.unsplash.com/photo-1524594152303-9fd13543fe6e?w=800", TopicTag: constants.TopicTagPropagation, Status: constants.ArticleStatusPublished, ViewCount: 67},
+		{UserID: admin.ID, Title: "春季换盆全攻略：时机、方法与注意事项", Content: "春季气温回升后是换盆的最佳时机。换盆前停止浇水3天，小心脱盆，修剪烂根并消毒，选择比原盆大1-2号的透气花盆，底部垫陶粒排水层……", Cover: "https://images.unsplash.com/photo-1459156212016-c812468e2115?w=800", TopicTag: constants.TopicTagRepotting, Status: constants.ArticleStatusPublished, ViewCount: 128, PublishedRevision: 1, PublishedAt: &now},
+		{UserID: admin.ID, Title: "多肉植物施肥要点：薄肥勤施", Content: "多肉施肥宜稀薄，生长季每月一次稀释液肥即可，休眠期停止施肥，避免肥害烧根……", Cover: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=800", TopicTag: constants.TopicTagFertilizing, Status: constants.ArticleStatusPublished, ViewCount: 96, PublishedRevision: 1, PublishedAt: &now},
+		{UserID: user.ID, Title: "月季夏季修剪与控旺", Content: "月季夏季修剪以轻剪为主，剪除残花和细弱枝，保留健壮枝条促进复花……", Cover: "https://images.unsplash.com/photo-1496062031456-07b8f162a322?w=800", TopicTag: constants.TopicTagPruning, Status: constants.ArticleStatusPublished, ViewCount: 210, PublishedRevision: 1, PublishedAt: &now},
+		{UserID: admin.ID, Title: "常见介壳虫的识别与防治", Content: "介壳虫常附着在叶背和枝干，可用酒精棉擦拭，严重时喷洒矿物油乳剂……", Cover: "https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?w=800", TopicTag: constants.TopicTagPestControl, Status: constants.ArticleStatusPublished, ViewCount: 154, PublishedRevision: 1, PublishedAt: &now},
+		{UserID: user.ID, Title: "龟背竹扦插繁殖实操", Content: "选取带气生根的健壮枝条，切口晾干后插入湿润的蛭石中，保持湿度约三周生根……", Cover: "https://images.unsplash.com/photo-1524594152303-9fd13543fe6e?w=800", TopicTag: constants.TopicTagPropagation, Status: constants.ArticleStatusPublished, ViewCount: 67, PublishedRevision: 1, PublishedAt: &now},
 	}
 	if err := db.Create(&articles).Error; err != nil {
 		return err

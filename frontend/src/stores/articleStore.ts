@@ -9,7 +9,8 @@ export const useArticleStore = defineStore('article', () => {
 
   async function load(params: { page?: number; page_size?: number; topic_tag?: string; keyword?: string } = {}) {
     const res = await listArticles(params)
-    articles.value = res.list
+    // 访客列表只映射线上快照
+    articles.value = res.list as CareArticle[]
     total.value = res.total
   }
 

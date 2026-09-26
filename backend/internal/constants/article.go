@@ -24,8 +24,3 @@ func IsValidTopicTag(t string) bool {
 	return false
 }
 
-// Article statuses.
-const (
-	ArticleStatusDraft   = "draft"
-	ArticleStatusPublished = "published"
-)
